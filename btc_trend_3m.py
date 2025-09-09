@@ -5,6 +5,10 @@
 import os
 import sys
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Fix encoding for Windows
 if os.name == 'nt':
@@ -22,6 +26,15 @@ import matplotlib.dates as mdates
 from typing import Dict, Tuple, List, Optional
 from datetime import datetime
 
+
+
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN not found in .env file")
+
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+if not TELEGRAM_CHAT_ID:
+    raise ValueError("TELEGRAM_CHAT_ID not found in .env file")
 
 # ============== CONFIG ==============
 SYMBOLS = [
@@ -67,10 +80,6 @@ SYMBOL_SPECIFIC_RR = {
 VOLUME_THRESHOLD = 1.2          # Volume ratio for confidence boost
 VOLATILITY_THRESHOLD = 2.0      # High volatility threshold
 
-# Telegram configuration
-#TELEGRAM_CHAT_ID = "-4706073326"
-TELEGRAM_BOT_TOKEN = "8226246719:AAHXDggFiFYpsgcq1vwTAWv7Gsz1URP4KEU"
-TELEGRAM_CHAT_ID = "-4985792721"
 
 # Global state
 error_counts: Dict[str, int] = {s: 0 for s in SYMBOLS}
