@@ -14,9 +14,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
-COPY btc_trend_3m.py .
-COPY start_server.png .
+# Sao chép các file mã nguồn khác vào container
+COPY . .
 
 # Create directory for generated charts
 RUN mkdir -p /app/charts
