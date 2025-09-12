@@ -1200,7 +1200,7 @@ def aligned_with_15m(side: str, label15: str) -> Tuple[bool, str]:
         return True, "15m SIDEWAYS"
     return False, "COUNTER-TREND 15m"
 
-def fmt(n: Optional[float], digits=2) -> str:
+def fmt(n: Optional[float], digits=4) -> str:
     """Format number with specified digits."""
     return "—" if n is None else f"{n:.{digits}f}"
 
