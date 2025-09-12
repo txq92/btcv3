@@ -78,7 +78,7 @@ SYMBOL_SPECIFIC_RR = {
     "WLDUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
     "ADAUSDT": {"min_rr": 1.5, "risk_percent": 0.8, "atr_sl_mult": 1.5, "atr_tp_mult": 3.0},
     "ENAUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
-    "TRUMPUSDT": {"min_rr": 2.0, "risk_percent": 0.5, "atr_sl_mult": 2.0, "atr_tp_mult": 4.0},
+    "TRUMPUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 2.0, "atr_tp_mult": 4.0},
     "TONUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
     "AAVEUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
     "LTCUSDT": {"min_rr": 1.5, "risk_percent": 0.8, "atr_sl_mult": 1.5, "atr_tp_mult": 3.0},
@@ -953,7 +953,7 @@ def collect_reversal_signals(df: pd.DataFrame) -> List[Dict]:
     sig += detect_bollinger_signals(df, within=min(10, len(df)-1))
 
     # Pin Bar detection
-    sig += detect_pin_bar(df, lookback=min(12, len(df)-1))
+    sig += detect_pin_bar(df, lookback=min(30, len(df)-1))
     
     return sorted(sig, key=lambda s: s["at"])
 
@@ -1440,12 +1440,12 @@ def send_performance_summary_to_telegram(period_days: int = 7):
         return False
 
 def detect_pin_bar(df: pd.DataFrame, lookback: int = 12,
-                   tail_ratio: float = 2.0,        # đuôi >= 2x thân
-                   body_frac_max: float = 0.30,     # thân <= 30% range
-                   dom_tail_frac_min: float = 0.55, # đuôi chính >= 55% range
-                   min_atr_frac: float = 0.8,       # range >= 0.8*ATR
-                   min_vol_frac: float = 0.9,       # vol >= 0.9*VolMA20
-                   clv_gate: float = 0.60           # close location gate
+                   tail_ratio: float = 1.5,        # đuôi >= 1.5x thân (nới)
+                   body_frac_max: float = 0.35,     # thân <= 35% range (nới)
+                   dom_tail_frac_min: float = 0.50, # đuôi chính >= 50% range (nới)
+                   min_atr_frac: float = 0.8,       # range đủ lớn (>= 0.8*ATR)
+                   min_vol_frac: float = 0.9,       # vol không quá yếu (>= 0.9*VolMA20)
+                   clv_gate: float = 0.55           # close location gate (nới)
                    ) -> List[Dict]:
     """
     Pin bar chất lượng:
@@ -1509,14 +1509,22 @@ def detect_pin_bar(df: pd.DataFrame, lookback: int = 12,
         if not np.isnan(vm):
             vol_ok = (row["volume"] >= min_vol_frac * vm)
 
-        near_sw_low  = bool(row.get("swing_low", False))
-        near_sw_high = bool(row.get("swing_high", False))
+        #near_sw_low  = bool(row.get("swing_low", False))
+        #near_sw_high = bool(row.get("swing_high", False))
+
+        # gần swing trong ±2 nến thay vì phải đúng nến swing
+        pos = df.index.get_loc(idx)
+        near_sw_low  = df['swing_low'].iloc[max(0, pos-2):pos+1].any()
+        near_sw_high = df['swing_high'].iloc[max(0, pos-2):pos+1].any()
 
         ema50 = df.loc[idx, "ema50"] if "ema50" in df.columns else np.nan
         ema100 = df.loc[idx, "ema100"] if "ema100" in df.columns else np.nan
 
-        bull_ema_ok = (not np.isnan(ema100)) and (c >= ema100)   # có thể nâng lên: c>ema50 & ema50>=ema100
-        bear_ema_ok = (not np.isnan(ema100)) and (c <= ema100)
+        #bull_ema_ok = (not np.isnan(ema100)) and (c >= ema100)   # có thể nâng lên: c>ema50 & ema50>=ema100
+        #bear_ema_ok = (not np.isnan(ema100)) and (c <= ema100)
+        # EMA regime mềm hơn: bullish cần c>=EMA50 & EMA50>=EMA100; bearish cần c<=EMA50 & EMA50<=EMA100
+        bull_ema_ok = (not np.isnan(ema50)) and (not np.isnan(ema100)) and (c >= ema50) and (ema50 >= ema100)
+        bear_ema_ok = (not np.isnan(ema50)) and (not np.isnan(ema100)) and (c <= ema50) and (ema50 <= ema100)
 
         # FINAL
         if bull_shape and atr_ok and vol_ok and bull_ema_ok and near_sw_low:
@@ -1624,7 +1632,9 @@ def process_symbol(symbol: str, first_run: bool, last_signal_ids: dict) -> Tuple
         print(f"   Key Factors: {', '.join(recommendation['reasons'][:2])}")  # Show first 2 reasons
         
         if signals:
-            latest = signals[-1]
+            # Ưu tiên gửi Pin Bar nếu có (lấy Pin Bar mới nhất), nếu không có thì lấy tín hiệu mới nhất
+            preferred = next((s for s in reversed(signals) if s.get('type') == 'Pin Bar'), None)
+            latest = preferred or signals[-1]
             signal_id = f"{symbol}_{latest['type']}_{latest['side']}_{latest['at']}"
             
             if first_run or signal_id != last_signal_ids.get(symbol):
@@ -1699,7 +1709,7 @@ def process_symbol(symbol: str, first_run: bool, last_signal_ids: dict) -> Tuple
                     #Chặn trade sát POC nếu không phải breakout
                     no_trade_near_poc = volume_profile.get("success") \
                         and volume_profile.get("price_near_poc") \
-                        and latest["type"] not in ("BB Breakout", "BOS")
+                        and latest["type"] not in ("BB Breakout", "BOS", "Pin Bar")
 
                     if no_trade_near_poc:
                         print(f"❌ {symbol}: Chặn trade sát POC nếu không phải breakout")
