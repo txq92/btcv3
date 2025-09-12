@@ -26,7 +26,7 @@ import matplotlib.dates as mdates
 from typing import Dict, Tuple, List, Optional
 from datetime import datetime
 
-
+MAX_ERR = 5
 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 if not TELEGRAM_BOT_TOKEN:
@@ -46,7 +46,11 @@ SYMBOLS = [
     "ADAUSDT",
     "ENAUSDT",
     "TRUMPUSDT",
-    "TONUSDT"
+    "TONUSDT",
+    "AAVEUSDT",
+    "LTCUSDT",
+    "ONDOUSDT",
+    "TAOUSDT"
 ]
 INTERVAL = "3m"
 LIMIT = 120
@@ -75,8 +79,13 @@ SYMBOL_SPECIFIC_RR = {
     "ADAUSDT": {"min_rr": 1.5, "risk_percent": 0.8, "atr_sl_mult": 1.5, "atr_tp_mult": 3.0},
     "ENAUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
     "TRUMPUSDT": {"min_rr": 2.0, "risk_percent": 0.5, "atr_sl_mult": 2.0, "atr_tp_mult": 4.0},
-    "TONUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5}
+    "TONUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
+    "AAVEUSDT": {"min_rr": 1.8, "risk_percent": 0.5, "atr_sl_mult": 1.8, "atr_tp_mult": 3.5},
+    "LTCUSDT": {"min_rr": 1.5, "risk_percent": 0.8, "atr_sl_mult": 1.5, "atr_tp_mult": 3.0},
+    "ONDOUSDT": {"min_rr": 2.0, "risk_percent": 0.5, "atr_sl_mult": 2.0, "atr_tp_mult": 4.0},
+    "TAOUSDT": {"min_rr": 2.0, "risk_percent": 0.5, "atr_sl_mult": 2.0, "atr_tp_mult": 4.0}
 }
+
 VOLUME_THRESHOLD = 1.2          # Volume ratio for confidence boost
 VOLATILITY_THRESHOLD = 2.0      # High volatility threshold
 
@@ -1149,6 +1158,12 @@ def compute_sl_tp(dfp: pd.DataFrame, side: str, symbol: str = "BTCUSDT") -> dict
         if volatility_ratio > VOLATILITY_THRESHOLD:
             confidence *= 0.8  # Reduce confidence in high volatility
         
+        # Chặn NaN volume_ratio
+        if not np.isfinite(volume_ratio):
+            volume_ratio = 1.0
+        # Chuẩn hóa confidence về [0.05, 0.95]
+        confidence = max(0.05, min(confidence, 0.95))
+
         return {
             "entry": entry,
             "sl": sl,
@@ -1200,7 +1215,7 @@ def aligned_with_15m(side: str, label15: str) -> Tuple[bool, str]:
         return True, "15m SIDEWAYS"
     return False, "COUNTER-TREND 15m"
 
-def fmt(n: Optional[float], digits=4) -> str:
+def fmt(n: Optional[float], digits=5) -> str:
     """Format number with specified digits."""
     return "—" if n is None else f"{n:.{digits}f}"
 
@@ -1648,6 +1663,9 @@ def process_symbol(symbol: str, first_run: bool, last_signal_ids: dict) -> Tuple
                     rr_data["confidence"] *= 1.2  # 20% boost for high confluence
                 elif confluence_analysis["confluence_score"] >= 2:
                     rr_data["confidence"] *= 1.1  # 10% boost for medium confluence
+
+                # Sau khi áp multiplier/boost cho rr_data["confidence"] gpt5
+                rr_data["confidence"] = max(0.05, min(rr_data["confidence"], 0.95))
                 
                 # Enhanced confidence check
                 enhanced_confidence_ok = rr_data["confidence"] >= 0.6  # Raised threshold
@@ -1687,7 +1705,7 @@ def process_symbol(symbol: str, first_run: bool, last_signal_ids: dict) -> Tuple
                         print(f"❌ {symbol}: Chặn trade sát POC nếu không phải breakout")
                         return True, "Filtered near POC"
 
-                    signal_time = latest['at'].strftime('%Y-%m-%d %H:%M:%S')
+                    signal_time = latest['at'].strftime('%H:%M:%S')
                     
                     # Enhanced Entry/SL/TP display with risk calculation
                     entry_price = rr_data['entry']
@@ -1741,7 +1759,7 @@ def process_symbol(symbol: str, first_run: bool, last_signal_ids: dict) -> Tuple
                     market_text = " | ".join(market_indicators) if market_indicators else "📊 Normal Conditions"
 
                     # Get current time for signal sending
-                    current_time = datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')
+                    current_time = datetime.now(TZ).strftime('%H:%M:%S')
                     
                     msg_parts = [
                         f"<b>🚨 {symbol} {latest['type']} Signal</b>",
@@ -1825,7 +1843,12 @@ def main():
             loop_count += 1
             all_recommendations = []
             
+
             for symbol in SYMBOLS:
+                if error_counts.get(symbol, 0) >= MAX_ERR:
+                    print(f"⏭️ Skip {symbol} (too many errors)")
+                    continue
+                
                 success, message = process_symbol(symbol, first_run, last_signal_ids)
                 if success:
                     # Get current recommendation for this symbol
@@ -1950,7 +1973,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        print("\nStarting ...")
+        print("\nStarting websocket...")
         main()
     except KeyboardInterrupt:
         print("\nDetected Ctrl+C, shutting down gracefully...")
