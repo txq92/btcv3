@@ -25,5 +25,6 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Default command
-CMD ["python", "autotrade.py"]
+CMD ["python", "autotrade2.py"]
+
 
