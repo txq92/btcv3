@@ -25,4 +25,5 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Default command
-CMD ["python", "btc_trend_3m.py"]
+CMD ["python", "autotrade.py"]
+
